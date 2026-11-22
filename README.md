@@ -118,6 +118,45 @@ Remove-Item Env:DATABASE_URL -ErrorAction SilentlyContinue
 
 Para una comprobación local rápida sin PostgreSQL se puede establecer explícitamente `DB_ENGINE=django.db.backends.sqlite3`, pero esa configuración no cumple el requisito de la versión evaluada. El flujo de CI utiliza PostgreSQL.
 
+## Prueba pública temporal con Cloudflare Tunnel (Windows)
+
+Cloudflare Quick Tunnel permite probar el sitio por HTTPS sin abrir puertos del router ni contratar Render. Es solo para desarrollo: la URL `trycloudflare.com` es aleatoria, cambia al crear otro túnel y deja de funcionar al cerrar `cloudflared`. Cualquiera que tenga la URL puede visitar el sitio; no la compartas si contiene información privada.
+
+Instala `cloudflared` una sola vez si aún no está instalado:
+
+```powershell
+winget install --id Cloudflare.cloudflared
+```
+
+Abre **dos terminales de PowerShell** en la raíz del repositorio. En la primera, construye Angular y arranca Django con SQLite local. `DEBUG=False` evita exponer las páginas técnicas de error de Django si ocurre una excepción:
+
+```powershell
+cd "D:\Descargas D\comunidad_cientifica_chile-main-clon-main"
+npm ci --prefix frontend
+npm run build --prefix frontend
+
+$env:DB_ENGINE = "django.db.backends.sqlite3"
+Remove-Item Env:DATABASE_URL -ErrorAction SilentlyContinue
+$env:DJANGO_DEBUG = "False"
+$env:DJANGO_ALLOWED_HOSTS = "localhost,127.0.0.1,.trycloudflare.com"
+$env:CSRF_TRUSTED_ORIGINS = "https://*.trycloudflare.com"
+$env:DJANGO_SECRET_KEY = (& ".\.venv\Scripts\python.exe" -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())")
+
+Set-Location comunidad_cientifica
+& "..\.venv\Scripts\python.exe" manage.py check
+& "..\.venv\Scripts\python.exe" manage.py runserver 127.0.0.1:8000
+```
+
+En la segunda terminal, inicia el túnel:
+
+```powershell
+cloudflared tunnel --url http://127.0.0.1:8000
+```
+
+Abre en el navegador la dirección `https://...trycloudflare.com` que imprima `cloudflared`. El catálogo estará en `/investigacion/` y la API en `/api/research/`. Para comprobar que HTTPS está activo, verifica que la dirección comience con `https://` y que el navegador muestre el candado. Mantén ambas terminales abiertas mientras haces la prueba; al terminar, presiona `Ctrl+C` en cada una. Si aparece una URL nueva, el comodín `.trycloudflare.com` ya está permitido por la configuración de Django y no hace falta editar el código.
+
+No uses Quick Tunnel como alojamiento de producción: no tiene garantía de disponibilidad, depende de que tu PC y conexión estén activos y no proporciona un nombre estable. Para una URL fija se necesita un túnel nombrado de Cloudflare y un dominio configurado.
+
 ## Prueba desde otros dispositivos de la red local
 
 Para que el centro o el equipo pueda revisar el sitio desde otro dispositivo conectado a la misma red Wi-Fi, abre PowerShell en el equipo que ejecutará Django y configura la IP local del equipo en `DJANGO_ALLOWED_HOSTS`. La IP puede cambiar al reconectarse a la red; consulta el valor actual con `ipconfig` y busca la dirección IPv4 del adaptador Wi-Fi:
