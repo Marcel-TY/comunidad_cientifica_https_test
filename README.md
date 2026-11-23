@@ -122,16 +122,34 @@ Para una comprobación local rápida sin PostgreSQL se puede establecer explíci
 
 Cloudflare Quick Tunnel permite probar el sitio por HTTPS sin abrir puertos del router ni contratar Render. Es solo para desarrollo: la URL `trycloudflare.com` es aleatoria, cambia al crear otro túnel y deja de funcionar al cerrar `cloudflared`. Cualquiera que tenga la URL puede visitar el sitio; no la compartas si contiene información privada.
 
-Instala `cloudflared` una sola vez si aún no está instalado:
+### 1. Instalar y comprobar `cloudflared`
 
-```powershell
-winget install --id Cloudflare.cloudflared
+En CMD o PowerShell, comprueba que Windows Package Manager (`winget`) está disponible:
+
+```cmd
+winget --version
 ```
 
-Abre **dos terminales de PowerShell** en la raíz del repositorio. En la primera, construye Angular y arranca Django con SQLite local. `DEBUG=False` evita exponer las páginas técnicas de error de Django si ocurre una excepción:
+Instala el cliente de línea de comandos de Cloudflare:
+
+```cmd
+winget install --id Cloudflare.cloudflared --exact
+```
+
+`--id` selecciona el paquete oficial `Cloudflare.cloudflared` y `--exact` evita coincidencias aproximadas. La instalación se hace una sola vez. Cierra y vuelve a abrir la terminal para que Windows actualice el `PATH`, y confirma que el comando se encuentra:
+
+```cmd
+cloudflared --version
+```
+
+Este comando instala el cliente, no crea un túnel permanente ni requiere iniciar sesión en Cloudflare para usar Quick Tunnel.
+
+### 2. Arrancar Django desde la terminal del proyecto
+
+Abre PowerShell en VS Code y cambia a la raíz del repositorio (la carpeta que contiene `frontend`, `comunidad_cientifica` y `manage.py`). Sustituye `<RUTA-ABSOLUTA-DEL-REPOSITORIO>` por la ruta real de esa carpeta:
 
 ```powershell
-cd "D:\Descargas D\comunidad_cientifica_chile-main-clon-main"
+cd "<RUTA-ABSOLUTA-DEL-REPOSITORIO>"
 npm ci --prefix frontend
 npm run build --prefix frontend
 
@@ -144,14 +162,23 @@ $env:DJANGO_SECRET_KEY = (& ".\.venv\Scripts\python.exe" -c "from django.core.ma
 
 Set-Location comunidad_cientifica
 & "..\.venv\Scripts\python.exe" manage.py check
+& "..\.venv\Scripts\python.exe" manage.py migrate --noinput
+& "..\.venv\Scripts\python.exe" manage.py collectstatic --noinput
 & "..\.venv\Scripts\python.exe" manage.py runserver 127.0.0.1:8000
 ```
 
-En la segunda terminal, inicia el túnel:
+`npm ci` instala las dependencias bloqueadas de Angular y normalmente solo hace falta la primera vez o cuando cambie `package-lock.json`; `npm run build` compila el frontend. Las variables configuran una base SQLite local, desactivan el modo de depuración y permiten el dominio temporal de Cloudflare. `manage.py check`, `migrate` y `collectstatic` validan Django, preparan la base y reúnen los archivos estáticos. `runserver` deja Django escuchando solo en el equipo local. Mantén esta terminal abierta.
 
-```powershell
+### 3. Iniciar el túnel desde CMD
+
+Abre otra ventana de CMD y ejecuta:
+
+```cmd
+cd /d "<RUTA-ABSOLUTA-DEL-REPOSITORIO>"
 cloudflared tunnel --url http://127.0.0.1:8000
 ```
+
+`cd /d` cambia a la carpeta del proyecto incluso si está en otra unidad. `cloudflared tunnel --url` crea un Quick Tunnel temporal y conecta una URL HTTPS pública con Django en el puerto local 8000. Mantén CMD abierto mientras lo uses.
 
 Abre en el navegador la dirección `https://...trycloudflare.com` que imprima `cloudflared`. El catálogo estará en `/investigacion/` y la API en `/api/research/`. Para comprobar que HTTPS está activo, verifica que la dirección comience con `https://` y que el navegador muestre el candado. Mantén ambas terminales abiertas mientras haces la prueba; al terminar, presiona `Ctrl+C` en cada una. Si aparece una URL nueva, el comodín `.trycloudflare.com` ya está permitido por la configuración de Django y no hace falta editar el código.
 
